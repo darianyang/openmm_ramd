@@ -94,7 +94,7 @@ class RAMDSimulation(openmm_app.Simulation):
                 topology, system, integrator, platform, properties)
     
     def recompute_RAMD_force(self):
-        print("recomputing force!")
+        #print("recomputing force!")
         self.force_handler.set_new_RAMD_force_vector()
         self.force_handler.force_object.updateParametersInContext(self.context)
     
@@ -271,14 +271,68 @@ class RAMDSimulation(openmm_app.Simulation):
         self.old_lig_com = lig_com
         return lig_com
     
-    def run_RAMD_sim(self, max_num_steps=1e8):
+    def run_RAMD_sim(self, max_num_steps=1e8, ramping=False):
+        """
+        Run the RAMD simulation until the maximum distance is exceeded.
+
+        Parameters
+        ----------
+        max_num_steps : int
+            Maximum number of simulation steps to perform.
+        ramping : bool
+            Whether to ramp up the RAMD force magnitude over time.
+            Starts with no force and increases linearly to the target.
+        """
         self.counter = 0
         start_lig_com = self.RAMD_start()
         
-        # Do the simulation steps and loop here. These are done every step
+        # ramping option
+        if ramping:
+            # create linear schedule from 0 to max force in steps of 2 kcal/mol*Angstrom
+            max_force_magnitude = self.force_handler.random_force_magnitude.value_in_unit(
+                kcal_per_mole_per_angstrom)
+            # start schedule at 0 force and then go up in steps of 2 from 1/2 max force
+            force_schedule = np.concatenate(([0], np.arange(max_force_magnitude/2, max_force_magnitude, 2.0), 
+                                             [max_force_magnitude]))
+            #steps_between_force_updates = 50000  # e.g., 100/200 ps with 2/4 fs timestep
+            # start with 25000 steps (100 ps at 4 fs timestep) to randomize initial state
+            # then run ramd of the other forces at increasingly larger step counts
+            # go up up to 2 ns (500_000 steps at 4 fs timestep)
+            # use same n elements as in force schedule
+            num_forces = len(force_schedule)
+            steps_between_force_updates = np.concatenate(([25000], 
+                                            np.linspace(50_000, 2_000_000, num_forces - 1, dtype=int)))
+            self.logger.log(f"Ramping RAMD force magnitude: {force_schedule} kcal/mol*Angstrom " +
+                            f"with {steps_between_force_updates} steps between updates.")
+
+            # loop over force schedule
+            for force, n_steps in dict(zip(force_schedule, steps_between_force_updates)).items():
+                # set updated force magnitude
+                self.force_handler.random_force_magnitude = force * kcal_per_mole_per_angstrom
+                self.recompute_RAMD_force()
+                
+                # set number of steps to run until next force update
+                # starts at 0 steps
+                next_n_steps = self.counter + n_steps
+                # run regular RAMD simulation until next force update
+                while self.counter < next_n_steps:
+                    # take MD steps here
+                    lig_com = self.RAMD_step(self.ramdSteps)
+                    lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
+                    
+                    # break if max distance exceeded early    
+                    if lig_prot_com_distance > self.maxDist:
+                        self.max_distance_exceeded(self.counter)
+                        break
+                self.logger.log(f"Ramped RAMD force magnitude to {force} kcal/mol*Angstrom at step {self.counter}.")
+            self.logger.log("Completed RAMD force ramping.")
+                
+        # Do the standard RAMD simulation steps and loop here. These are done every step
         while self.counter < max_num_steps:
+            # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
             lig_com = self.RAMD_step(self.ramdSteps)
             lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
+            # break if max distance exceeded
             if lig_prot_com_distance > self.maxDist:
                 self.max_distance_exceeded(self.counter)
                 break
