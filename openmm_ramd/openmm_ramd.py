@@ -271,7 +271,8 @@ class RAMDSimulation(openmm_app.Simulation):
         self.old_lig_com = lig_com
         return lig_com
     
-    def run_RAMD_sim(self, max_num_steps=1e8, ramping=False):
+    def run_RAMD_sim(self, max_num_steps=1e8, ramping=False, continue_until_unbound=False,
+                     extra_force=2.0, extra_steps=500_000):
         """
         Run the RAMD simulation until the maximum distance is exceeded.
 
@@ -282,6 +283,17 @@ class RAMDSimulation(openmm_app.Simulation):
         ramping : bool
             Whether to ramp up the RAMD force magnitude over time.
             Starts with no force and increases linearly to the target.
+        continue_until_unbound : bool
+            Whether to continue the simulation until the ligand is unbound,
+            even if the maximum number of steps is reached.
+            Will continue for extra_steps additional steps at an extra extra_force kcal/mol*Angstrom.
+            This repeats with increasing force until unbound.
+        extra_force : float
+            The extra force magnitude to add when continuing after max steps.
+            Default is 2.0 kcal/mol*Angstrom.
+        extra_steps : int
+            The number of extra steps to run when continuing after max steps.
+            Default is 500,000 steps (2 ns at 4 fs timestep).
         """
         self.counter = 0
         start_lig_com = self.RAMD_start()
@@ -334,8 +346,34 @@ class RAMDSimulation(openmm_app.Simulation):
             # break if max distance exceeded
             if lig_prot_com_distance > self.maxDist:
                 self.max_distance_exceeded(self.counter)
-                break
+                return self.counter
         
+        # if continue_until_unbound is set, continue with extra force if max steps reached
+        if continue_until_unbound:
+            while True:
+                # increase max_num_steps by extra_steps
+                max_num_steps += extra_steps
+                # set new increased force magnitude
+                ramd_force_magnitude = self.force_handler.random_force_magnitude.value_in_unit(
+                    kcal_per_mole_per_angstrom) + extra_force
+                self.logger.log(f"WARNING: Maximum number of steps increased to {max_num_steps}. " +
+                                f"Continuing RAMD simulation with extra force " +
+                                f"of {extra_force} kcal/mol*Angstrom for {extra_steps} extra steps. " +
+                                f"Total force magnitude of {ramd_force_magnitude} kcal/mol*Angstrom.",
+                                print_also=True)
+                self.force_handler.random_force_magnitude = ramd_force_magnitude * kcal_per_mole_per_angstrom
+                self.recompute_RAMD_force()
+                
+                # run additional steps with increased force
+                while self.counter < max_num_steps:
+                    lig_com = self.RAMD_step(self.ramdSteps)
+                    lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
+                    # break if max distance exceeded
+                    if lig_prot_com_distance > self.maxDist:
+                        self.max_distance_exceeded(self.counter)
+                        return self.counter
+
+        # return the total number of steps performed
         return self.counter
 
 if __name__ == "__main__":
