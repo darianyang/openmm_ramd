@@ -322,7 +322,7 @@ class RAMDSimulation(openmm_app.Simulation):
                     # break if max distance exceeded early    
                     if lig_prot_com_distance > self.maxDist:
                         self.max_distance_exceeded(self.counter)
-                        break
+                        return self.counter
                 self.logger.log(f"Ramped RAMD force magnitude to {force} kcal/mol*Angstrom at step {self.counter}.")
             self.logger.log("Completed RAMD force ramping.")
                 
