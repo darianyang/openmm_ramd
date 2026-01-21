@@ -297,11 +297,11 @@ class RAMDSimulation(openmm_app.Simulation):
             #steps_between_force_updates = 50000  # e.g., 100/200 ps with 2/4 fs timestep
             # start with 25000 steps (100 ps at 4 fs timestep) to randomize initial state
             # then run ramd of the other forces at increasingly larger step counts
-            # go up up to 2 ns (500_000 steps at 4 fs timestep)
+            # go up to 4 ns (1_000_000 steps at 4 fs timestep)
             # use same n elements as in force schedule
             num_forces = len(force_schedule)
             steps_between_force_updates = np.concatenate(([25000], 
-                                            np.linspace(50_000, 2_000_000, num_forces - 1, dtype=int)))
+                                            np.linspace(50_000, 1_000_000, num_forces - 1, dtype=int)))
             self.logger.log(f"Ramping RAMD force magnitude: {force_schedule} kcal/mol*Angstrom " +
                             f"with {steps_between_force_updates} steps between updates.")
 
