@@ -125,7 +125,7 @@ class RAMDSimulation(openmm_app.Simulation):
     def get_lig_com(self, positions=None):
         if positions is None:
             state = self.context.getState(getPositions = True)
-            positions = state.getPositions()
+            positions = state.getPositions(asNumpy=True)
         com = base.get_ligand_com(self.system, positions, 
                                   self.force_handler.ligand_atom_indices)
         return com
@@ -133,7 +133,7 @@ class RAMDSimulation(openmm_app.Simulation):
     def get_rec_com(self, positions=None):
         if positions is None:
             state = self.context.getState(getPositions = True)
-            positions = state.getPositions()
+            positions = state.getPositions(asNumpy=True)
         com = base.get_ligand_com(self.system, positions, 
                                   self.force_handler.receptor_atom_indices)
         return com
@@ -201,7 +201,7 @@ class RAMDSimulation(openmm_app.Simulation):
     def RAMD_step(self, numSteps=50):
         self.step(numSteps)
         state = self.context.getState(getPositions = True)
-        positions = state.getPositions()
+        positions = state.getPositions(asNumpy=True)
         lig_com = self.get_lig_com(positions)
         if self.force_handler.receptor_atom_indices is not None:
             rec_com = self.get_rec_com(positions)
