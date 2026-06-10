@@ -335,14 +335,14 @@ class RAMDSimulation(openmm_app.Simulation):
                 # starts at 0 steps
                 next_n_steps = self.counter + n_steps
                 # run regular RAMD simulation until next force update
-                self.main_ramd_loop(next_n_steps, start_lig_com)
+                self.main_ramd_loop(next_n_steps)
 
                 self.logger.log(f"Ramped RAMD force magnitude to {force} kcal/mol*Angstrom at step {self.counter}.")
             self.logger.log("Completed RAMD force ramping.")
                 
         # Do the standard RAMD simulation steps and loop here. These are done every step
         # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
-        self.main_ramd_loop(max_num_steps, start_lig_com)
+        self.main_ramd_loop(max_num_steps)
         
         # if continue_until_unbound is set, continue with extra force if max steps reached
         if continue_until_unbound:
@@ -361,7 +361,7 @@ class RAMDSimulation(openmm_app.Simulation):
                 self.recompute_RAMD_force()
                 
                 # run additional steps with increased force
-                self.main_ramd_loop(max_num_steps, start_lig_com)
+                self.main_ramd_loop(max_num_steps)
 
         # return the total number of steps performed
         return self.counter
