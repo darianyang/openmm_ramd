@@ -271,6 +271,16 @@ class RAMDSimulation(openmm_app.Simulation):
         self.old_lig_com = lig_com
         return lig_com
     
+    def main_ramd_loop(self, max_num_steps, start_lig_com):
+        while self.counter < max_num_steps:
+            # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
+            lig_com = self.RAMD_step(self.ramdSteps)
+            lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
+            # break if max distance exceeded
+            if lig_prot_com_distance > self.maxDist:
+                self.max_distance_exceeded(self.counter)
+                return self.counter
+
     def run_RAMD_sim(self, max_num_steps=1e8, ramping=False, continue_until_unbound=False,
                      extra_force=2.0, extra_steps=500_000):
         """
@@ -305,7 +315,7 @@ class RAMDSimulation(openmm_app.Simulation):
                 kcal_per_mole_per_angstrom)
             # start schedule at 0 force and then go up in steps of 2 from 1/2 max force
             force_schedule = np.concatenate(([0], np.arange(max_force_magnitude/2, max_force_magnitude, 2.0)))
-            #steps_between_force_updates = 50000  # e.g., 100/200 ps with 2/4 fs timestep
+            # steps_between_force_updates = 50000  # e.g., 100/200 ps with 2/4 fs timestep
             # start with 25000 steps (100 ps at 4 fs timestep) to randomize initial state
             # then run ramd of the other forces at increasingly larger step counts
             # go up from 0.5 ns to 4 ns (125_000 to 1_000_000 steps at 4 fs timestep)
@@ -326,27 +336,14 @@ class RAMDSimulation(openmm_app.Simulation):
                 # starts at 0 steps
                 next_n_steps = self.counter + n_steps
                 # run regular RAMD simulation until next force update
-                while self.counter < next_n_steps:
-                    # take MD steps here
-                    lig_com = self.RAMD_step(self.ramdSteps)
-                    lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
-                    
-                    # break if max distance exceeded early    
-                    if lig_prot_com_distance > self.maxDist:
-                        self.max_distance_exceeded(self.counter)
-                        return self.counter
+                self.main_ramd_loop(next_n_steps, start_lig_com)
+
                 self.logger.log(f"Ramped RAMD force magnitude to {force} kcal/mol*Angstrom at step {self.counter}.")
             self.logger.log("Completed RAMD force ramping.")
                 
         # Do the standard RAMD simulation steps and loop here. These are done every step
-        while self.counter < max_num_steps:
-            # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
-            lig_com = self.RAMD_step(self.ramdSteps)
-            lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
-            # break if max distance exceeded
-            if lig_prot_com_distance > self.maxDist:
-                self.max_distance_exceeded(self.counter)
-                return self.counter
+        # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
+        self.main_ramd_loop(max_num_steps, start_lig_com)
         
         # if continue_until_unbound is set, continue with extra force if max steps reached
         if continue_until_unbound:
@@ -365,13 +362,7 @@ class RAMDSimulation(openmm_app.Simulation):
                 self.recompute_RAMD_force()
                 
                 # run additional steps with increased force
-                while self.counter < max_num_steps:
-                    lig_com = self.RAMD_step(self.ramdSteps)
-                    lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
-                    # break if max distance exceeded
-                    if lig_prot_com_distance > self.maxDist:
-                        self.max_distance_exceeded(self.counter)
-                        return self.counter
+                self.main_ramd_loop(max_num_steps, start_lig_com)
 
         # return the total number of steps performed
         return self.counter
