@@ -125,7 +125,7 @@ class RAMDSimulation(openmm_app.Simulation):
     def get_lig_com(self, positions=None):
         if positions is None:
             state = self.context.getState(getPositions = True)
-            positions = state.getPositions()
+            positions = state.getPositions(asNumpy=True)
         com = base.get_ligand_com(self.system, positions, 
                                   self.force_handler.ligand_atom_indices)
         return com
@@ -133,7 +133,7 @@ class RAMDSimulation(openmm_app.Simulation):
     def get_rec_com(self, positions=None):
         if positions is None:
             state = self.context.getState(getPositions = True)
-            positions = state.getPositions()
+            positions = state.getPositions(asNumpy=True)
         com = base.get_ligand_com(self.system, positions, 
                                   self.force_handler.receptor_atom_indices)
         return com
@@ -207,7 +207,7 @@ class RAMDSimulation(openmm_app.Simulation):
         else:
             self.step(numSteps)
         state = self.context.getState(getPositions = True)
-        positions = state.getPositions()
+        positions = state.getPositions(asNumpy=True)
         lig_com = self.get_lig_com(positions)
         if self.force_handler.receptor_atom_indices is not None:
             rec_com = self.get_rec_com(positions)
@@ -275,8 +275,19 @@ class RAMDSimulation(openmm_app.Simulation):
         
         self.counter += self.ramdSteps
         self.old_lig_com = lig_com
-        return lig_com
+        return lig_com, rec_com
     
+    def main_ramd_loop(self, max_num_steps):
+        while self.counter < max_num_steps:
+            # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
+            lig_com, rec_com = self.RAMD_step(self.ramdSteps)
+            lig_prot_com_distance = np.linalg.norm(lig_com.value_in_unit(unit.angstroms) - 
+                                                   rec_com.value_in_unit(unit.angstroms)))
+            # break if max distance exceeded
+            if lig_prot_com_distance > self.maxDist:
+                self.max_distance_exceeded(self.counter)
+                return self.counter
+
     def run_RAMD_sim(self, max_num_steps=1e8, ramping=False, continue_until_unbound=False,
                      extra_force=2.0, extra_steps=500_000, fdb_updater=None, fdb_scale=0.1):
         """
@@ -302,7 +313,6 @@ class RAMDSimulation(openmm_app.Simulation):
             Default is 500,000 steps (2 ns at 4 fs timestep).
         """
         self.counter = 0
-        start_lig_com = self.RAMD_start()
         
         # ramping option
         if ramping:
@@ -332,27 +342,12 @@ class RAMDSimulation(openmm_app.Simulation):
                 # starts at 0 steps
                 next_n_steps = self.counter + n_steps
                 # run regular RAMD simulation until next force update
-                while self.counter < next_n_steps:
-                    # take MD steps here
-                    lig_com = self.RAMD_step(self.ramdSteps, fdb_updater=fdb_updater, fdb_scale=fdb_scale)
-                    lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
-                    
-                    # break if max distance exceeded early    
-                    if lig_prot_com_distance > self.maxDist:
-                        self.max_distance_exceeded(self.counter)
-                        return self.counter
+                self.main_ramd_loop(next_n_steps)
                 self.logger.log(f"Ramped RAMD force magnitude to {force} kcal/mol*Angstrom at step {self.counter}.")
             self.logger.log("Completed RAMD force ramping.")
                 
         # Do the standard RAMD simulation steps and loop here. These are done every step
-        while self.counter < max_num_steps:
-            # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
-            lig_com = self.RAMD_step(self.ramdSteps, fdb_updater=fdb_updater, fdb_scale=fdb_scale)
-            lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
-            # break if max distance exceeded
-            if lig_prot_com_distance > self.maxDist:
-                self.max_distance_exceeded(self.counter)
-                return self.counter
+        self.main_ramd_loop(max_num_steps)
         
         # if continue_until_unbound is set, continue with extra force if max steps reached
         if continue_until_unbound:
@@ -371,13 +366,7 @@ class RAMDSimulation(openmm_app.Simulation):
                 self.recompute_RAMD_force()
                 
                 # run additional steps with increased force
-                while self.counter < max_num_steps:
-                    lig_com = self.RAMD_step(self.ramdSteps, fdb_updater=fdb_updater, fdb_scale=fdb_scale)
-                    lig_prot_com_distance = np.linalg.norm(lig_com - start_lig_com)
-                    # break if max distance exceeded
-                    if lig_prot_com_distance > self.maxDist:
-                        self.max_distance_exceeded(self.counter)
-                        return self.counter
+                self.main_ramd_loop(max_num_steps)
 
         # return the total number of steps performed
         return self.counter
