@@ -282,7 +282,7 @@ class RAMDSimulation(openmm_app.Simulation):
             # by default 0.1/0.2 ps or 50 steps with 2/4 fs timestep before potential force update
             lig_com, rec_com = self.RAMD_step(self.ramdSteps)
             lig_prot_com_distance = np.linalg.norm(lig_com.value_in_unit(unit.angstroms) - 
-                                                   rec_com.value_in_unit(unit.angstroms)))
+                                                   rec_com.value_in_unit(unit.angstroms))
             # break if max distance exceeded
             if lig_prot_com_distance > self.maxDist:
                 self.max_distance_exceeded(self.counter)
@@ -313,6 +313,7 @@ class RAMDSimulation(openmm_app.Simulation):
             Default is 500,000 steps (2 ns at 4 fs timestep).
         """
         self.counter = 0
+        self.RAMD_start()
         
         # ramping option
         if ramping:
