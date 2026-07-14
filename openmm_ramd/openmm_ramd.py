@@ -140,6 +140,7 @@ class RAMDSimulation(openmm_app.Simulation):
     
     def RAMD_start(self):
         self.counter = 0
+        self.unbound = False
         if self.logger is not None:
             self.logger.log("ramdSteps                {}".format(self.ramdSteps))
             self.logger.log("openmmVersion            {}".format(
@@ -286,6 +287,7 @@ class RAMDSimulation(openmm_app.Simulation):
             # break if max distance exceeded
             if lig_prot_com_distance > self.maxDist:
                 self.max_distance_exceeded(self.counter)
+                self.unbound = True
                 return self.counter
 
     def run_RAMD_sim(self, max_num_steps=1e8, ramping=False, continue_until_unbound=False,
@@ -351,8 +353,8 @@ class RAMDSimulation(openmm_app.Simulation):
         self.main_ramd_loop(max_num_steps)
         
         # if continue_until_unbound is set, continue with extra force if max steps reached
-        if continue_until_unbound:
-            while True:
+        if continue_until_unbound and self.unbound is False:
+            while self.unbound is False:
                 # increase max_num_steps by extra_steps
                 max_num_steps += extra_steps
                 # set new increased force magnitude
