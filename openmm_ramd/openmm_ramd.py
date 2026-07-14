@@ -347,6 +347,9 @@ class RAMDSimulation(openmm_app.Simulation):
                 # run regular RAMD simulation until next force update
                 self.main_ramd_loop(next_n_steps)
                 self.logger.log(f"Ramped RAMD force magnitude to {force} kcal/mol*Angstrom at step {self.counter}.")
+                if self.unbound:
+                    self.logger.log(f"Ligand unbound during force ramping at step {self.counter}. Stopping ramping.")
+                    return self.counter
             self.logger.log("Completed RAMD force ramping.")
                 
         # Do the standard RAMD simulation steps and loop here. These are done every step
